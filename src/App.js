@@ -1,20 +1,25 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { initializeApp } from 'firebase/app';
-import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from 'firebase/auth';
-import { getFirestore, doc, setDoc, onSnapshot, collection, addDoc, getDocs, deleteDoc, query, updateDoc } from 'firebase/firestore';
-import { ChevronDown, CheckCircle2, Circle, Calendar, ListChecks, ChevronLeft, ChevronRight, Dumbbell, Plus, Trash2, X, PlayCircle, PlusCircle, Sun, Moon, BarChart2, Flame, Edit, Wind, Zap, HeartPulse, Award, User, Target, Clock, Route, Zap as WorkoutIcon, Activity as SingleActivityIcon } from 'lucide-react';
-import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
+import { getFirestore, doc, setDoc, onSnapshot, collection, addDoc, deleteDoc, query, updateDoc } from 'firebase/firestore';
+import { ChevronDown, CheckCircle2, Circle, Calendar, ListChecks, ChevronLeft, ChevronRight, Dumbbell, Plus, Trash2, X, PlusCircle, Sun, Moon, BarChart2, Flame, Edit, Wind, Zap, HeartPulse, Award, User, Target } from 'lucide-react';
+import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from 'recharts';
 
 
 // --- Firebase Configuration ---
-// These variables are expected to be injected by the environment.
-const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
-const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+// This is the configuration for your Firebase project.
+const firebaseConfig = {
+  apiKey: "AIzaSyBOgDKcuKfhtTOWtJ53wOMpVNr7Ky5K4gA",
+  authDomain: "bosh-fitness.firebaseapp.com",
+  projectId: "bosh-fitness",
+  storageBucket: "bosh-fitness.appspot.com",
+  messagingSenderId: "1057229875856",
+  appId: "1:1057229875856:web:518cf305c30f95e30e4615"
+};
 
-// --- Firebase Initialization ---
-const app = initializeApp(firebaseConfig);
-const auth = getAuth(app);
-const db = getFirestore(app);
+// This is a placeholder for the app ID.
+const appId = 'default-app-id';
+
 
 // --- App Data ---
 const exerciseCategories = ['Upper Body', 'Lower Body', 'Core', 'Cardio', 'Full Body'];
@@ -165,7 +170,23 @@ const ExerciseItem = ({ exercise, isChecked, onToggle }) => {
 };
 
 const ActivityChecklistModal = ({ day, onClose, activityProgress, setActivityProgress, customActivities, activityLogs, setActivityLogs, onConfirmDelete }) => {
+  // Hooks are now at the top level, before any potential early returns.
+  const [duration, setDuration] = useState('');
+  const [distance, setDistance] = useState('');
+  const [calories, setCalories] = useState('');
+  
   const activity = customActivities.find(w => w.id === day.activityId);
+
+  // Set initial state after finding the activity
+  useEffect(() => {
+    if (activity) {
+      const log = activityLogs[day.date]?.find(l => l.instanceId === day.instanceId);
+      setDuration(log?.duration || '');
+      setDistance(log?.distance || '');
+      setCalories(log?.calories || '');
+    }
+  }, [activity, day.date, day.instanceId, activityLogs]);
+
   if (!activity) return null;
  
   const hasExercises = activity.exercises && activity.exercises.length > 0;
@@ -174,10 +195,6 @@ const ActivityChecklistModal = ({ day, onClose, activityProgress, setActivityPro
   const isWorkoutComplete = hasExercises && activity.exercises.every(ex => dateProgress[ex.name]);
   const isSingleActivityComplete = !hasExercises && activityLogs[day.date]?.some(log => log.instanceId === day.instanceId);
   const isComplete = isWorkoutComplete || isSingleActivityComplete;
-
-  const [duration, setDuration] = useState(activityLogs[day.date]?.find(l => l.instanceId === day.instanceId)?.duration || '');
-  const [distance, setDistance] = useState(activityLogs[day.date]?.find(l => l.instanceId === day.instanceId)?.distance || '');
-  const [calories, setCalories] = useState(activityLogs[day.date]?.find(l => l.instanceId === day.instanceId)?.calories || '');
 
   const handleStatSave = (isCompleting) => {
     setActivityLogs(prev => {
@@ -985,48 +1002,52 @@ const DashboardView = ({ customActivities, calendarSchedule, activityProgress, a
     const today = new Date();
     const formattedDate = formatDateWithOrdinal(today);
     const startOfWeek = getStartOfWeek(today);
-    let scheduledThisWeek = 0;
-    let completedThisWeek = 0;
+    const [streak, setStreak] = useState(0);
 
-    for(let i=0; i<7; i++){
-        const date = new Date(startOfWeek);
-        date.setDate(startOfWeek.getDate() + i);
-        const dateString = formatDate(date);
-        const schedule = calendarSchedule[dateString] || [];
-        scheduledThisWeek += schedule.length;
+    const { scheduledThisWeek, completedThisWeek } = useMemo(() => {
+        let scheduled = 0;
+        let completed = 0;
+        for(let i=0; i<7; i++){
+            const date = new Date(startOfWeek);
+            date.setDate(startOfWeek.getDate() + i);
+            const dateString = formatDate(date);
+            const schedule = calendarSchedule[dateString] || [];
+            scheduled += schedule.length;
 
-        if (schedule.length > 0) {
-            schedule.forEach(instance => {
-                const activity = customActivities.find(w => w.id === instance.activityId);
-                if (activity) {
-                    let isCompleted = false;
-                    if (activity.exercises && activity.exercises.length > 0) {
-                        const progress = activityProgress[dateString]?.[instance.instanceId] || {};
-                        isCompleted = activity.exercises.every(ex => progress[ex.name]);
-                    } else {
-                        isCompleted = activityLogs[dateString]?.some(l => l.instanceId === instance.instanceId);
+            if (schedule.length > 0) {
+                schedule.forEach(instance => {
+                    const activity = customActivities.find(w => w.id === instance.activityId);
+                    if (activity) {
+                        let isCompleted = false;
+                        if (activity.exercises && activity.exercises.length > 0) {
+                            const progress = activityProgress[dateString]?.[instance.instanceId] || {};
+                            isCompleted = activity.exercises.every(ex => progress[ex.name]);
+                        } else {
+                            isCompleted = activityLogs[dateString]?.some(l => l.instanceId === instance.instanceId);
+                        }
+                        if (isCompleted) {
+                            completed++;
+                        }
                     }
-                    if (isCompleted) {
-                        completedThisWeek++;
-                    }
-                }
-            });
+                });
+            }
         }
-    }
+        return { scheduledThisWeek: scheduled, completedThisWeek: completed };
+    }, [startOfWeek, calendarSchedule, customActivities, activityProgress, activityLogs]);
    
     const completionPercentage = scheduledThisWeek > 0 ? (completedThisWeek / scheduledThisWeek) * 100 : 0;
-    let medal = null;
-    if (completionPercentage >= 100) medal = { color: 'text-yellow-400', name: 'Gold' };
-    else if (completionPercentage >= 70) medal = { color: 'text-gray-400', name: 'Silver' };
-    else if (completionPercentage >= 50) medal = { color: 'text-yellow-600', name: 'Bronze' };
+    const medal = useMemo(() => {
+        if (completionPercentage >= 100) return { color: 'text-yellow-400', name: 'Gold' };
+        if (completionPercentage >= 70) return { color: 'text-gray-400', name: 'Silver' };
+        if (completionPercentage >= 50) return { color: 'text-yellow-600', name: 'Bronze' };
+        return null;
+    }, [completionPercentage]);
 
-    const [streak, setStreak] = useState(0);
     useEffect(() => {
         let currentStreak = 0;
         const d = new Date();
         d.setHours(0,0,0,0);
 
-        // Check from today backwards
         while(true) {
             const dateStr = formatDate(d);
             const schedule = calendarSchedule[dateStr] || [];
@@ -1144,7 +1165,8 @@ const DashboardView = ({ customActivities, calendarSchedule, activityProgress, a
   };
 
 // --- Main App Component ---
-export default function App() {
+function AppContent() {
+  // All state variables are initialized here at the top level
   const [activeTab, setActiveTab] = useState('dashboard');
   const [activityChecklist, setActivityChecklist] = useState(null);
   const [confirmingDelete, setConfirmingDelete] = useState(null);
@@ -1164,14 +1186,11 @@ export default function App() {
   const [habitList, setHabitList] = useState(defaultHabits);
   const [activityLogs, setActivityLogs] = useState({});
  
-  const [userId, setUserId] = useState(null);
-  const [isAuthReady, setIsAuthReady] = useState(false);
-  const [db, setDb] = useState(null);
-  const [auth, setAuth] = useState(null);
-  const [configError, setConfigError] = useState(null);
+  const { isAuthReady, userId, db, auth } = useAuth(); // Using the custom hook
 
   const allExercises = [...masterExerciseList, ...userExercises];
  
+  // All hooks are called unconditionally at the top level
   useEffect(() => {
     if (theme === 'dark') {
       document.documentElement.classList.add('dark');
@@ -1184,54 +1203,65 @@ export default function App() {
     setCalendarView(isMobile ? 'week' : 'month');
   }, [isMobile]);
 
+  const saveNewActivity = useCallback(async (activityData, idToUpdate = null) => {
+      if (!isAuthReady || !userId || !db) return;
+      try {
+          if (idToUpdate) {
+              const activityDoc = doc(db, 'artifacts', appId, 'users', userId, 'customActivities', idToUpdate);
+              await updateDoc(activityDoc, activityData);
+          } else {
+              const activitiesCol = collection(db, 'artifacts', appId, 'users', userId, 'customActivities');
+              await addDoc(activitiesCol, activityData);
+          }
+      } catch (e) { console.error("Error saving activity: ", e); }
+  }, [isAuthReady, userId, db]);
+
+  // Debounced Firestore updates
   useEffect(() => {
-    if (!firebaseConfig.apiKey || firebaseConfig.apiKey === "YOUR_API_KEY") {
-        setConfigError("Firebase configuration is missing. Please add your credentials to the firebaseConfig object in App.jsx.");
-        return;
-    }
-    try {
-        const app = initializeApp(firebaseConfig);
-        const authInstance = getAuth(app);
-        setDb(getFirestore(app));
-        setAuth(authInstance);
+    if (!isAuthReady || !userId || !db) return;
+    const handler = setTimeout(() => {
+        const docRef = doc(db, 'artifacts', appId, 'users', userId, 'data', 'activityCompletion');
+        setDoc(docRef, { data: activityProgress }).catch(e => console.error("Error saving activity progress:", e));
+    }, 1000);
+    return () => clearTimeout(handler);
+  }, [activityProgress, isAuthReady, userId, db]);
 
-        const unsubscribe = onAuthStateChanged(authInstance, async (user) => {
-            if (user) {
-                setUserId(user.uid);
-            } else {
-                try {
-                    await signInAnonymously(authInstance);
-                } catch (error) { console.error("Authentication Error:", error); }
-            }
-            setIsAuthReady(true);
-        });
-        return () => unsubscribe();
-    } catch (e) {
-        console.error("Error initializing Firebase:", e);
-        setConfigError("Failed to initialize Firebase. Check your configuration.");
-    }
-  }, []);
+  useEffect(() => {
+    if (!isAuthReady || !userId || !db) return;
+    const handler = setTimeout(() => {
+        const docRef = doc(db, 'artifacts', appId, 'users', userId, 'data', 'calendarSchedule');
+        setDoc(docRef, { data: calendarSchedule }).catch(e => console.error("Error saving calendar schedule:", e));
+    }, 1000);
+    return () => clearTimeout(handler);
+  }, [calendarSchedule, isAuthReady, userId, db]);
 
-  const useDataUpdater = (data, docName) => {
-      const updateInFirestore = useCallback(async () => {
-          if (!isAuthReady || !userId || !db) return;
-          try {
-              const docRef = doc(db, 'artifacts', appId, 'users', userId, 'data', docName);
-              await setDoc(docRef, { data });
-          } catch (error) { console.error(`Error saving ${docName}:`, error); }
-      }, [userId, data, isAuthReady, docName, db]);
+  useEffect(() => {
+    if (!isAuthReady || !userId || !db) return;
+    const handler = setTimeout(() => {
+        const docRef = doc(db, 'artifacts', appId, 'users', userId, 'data', 'habitList');
+        setDoc(docRef, { data: habitList }).catch(e => console.error("Error saving habit list:", e));
+    }, 1000);
+    return () => clearTimeout(handler);
+  }, [habitList, isAuthReady, userId, db]);
 
-      useEffect(() => {
-          const handler = setTimeout(() => { updateInFirestore(); }, 1000);
-          return () => clearTimeout(handler);
-      }, [data, updateInFirestore]);
-  };
+    useEffect(() => {
+    if (!isAuthReady || !userId || !db) return;
+    const handler = setTimeout(() => {
+        const docRef = doc(db, 'artifacts', appId, 'users', userId, 'data', 'userExercises');
+        setDoc(docRef, { data: userExercises }).catch(e => console.error("Error saving user exercises:", e));
+    }, 1000);
+    return () => clearTimeout(handler);
+  }, [userExercises, isAuthReady, userId, db]);
 
-  useDataUpdater(activityProgress, 'activityCompletion');
-  useDataUpdater(calendarSchedule, 'calendarSchedule');
-  useDataUpdater(habitList, 'habitList');
-  useDataUpdater(userExercises, 'userExercises');
-  useDataUpdater(activityLogs, 'activityLogs');
+  useEffect(() => {
+    if (!isAuthReady || !userId || !db) return;
+    const handler = setTimeout(() => {
+        const docRef = doc(db, 'artifacts', appId, 'users', userId, 'data', 'activityLogs');
+        setDoc(docRef, { data: activityLogs }).catch(e => console.error("Error saving activity logs:", e));
+    }, 1000);
+    return () => clearTimeout(handler);
+  }, [activityLogs, isAuthReady, userId, db]);
+
  
   useEffect(() => {
     if (!isAuthReady || !userId || !db) return;
@@ -1251,21 +1281,9 @@ export default function App() {
     });
 
     return () => { unsubActivityProgress(); unsubSchedule(); unsubHabits(); unsubUserEx(); unsubActivities(); unsubActivityLogs(); };
-  }, [isAuthReady, userId, db]);
+  }, [isAuthReady, userId, db, customActivities.length, saveNewActivity]);
 
-  const saveNewActivity = async (activityData, idToUpdate = null) => {
-      if (!isAuthReady || !userId || !db) return;
-      try {
-          if (idToUpdate) {
-              const activityDoc = doc(db, 'artifacts', appId, 'users', userId, 'customActivities', idToUpdate);
-              await updateDoc(activityDoc, activityData);
-          } else {
-              const activitiesCol = collection(db, 'artifacts', appId, 'users', userId, 'customActivities');
-              await addDoc(activitiesCol, activityData);
-          }
-      } catch (e) { console.error("Error saving activity: ", e); }
-  };
-
+  // All helper functions are defined before the final return statement
   const deleteActivityFromSchedule = (date, instanceId) => {
         setCalendarSchedule(prev => {
             const daySchedule = (prev[date] || []).filter(s => s.instanceId !== instanceId);
@@ -1306,10 +1324,6 @@ export default function App() {
     setActivityChecklist({ date, ...instance });
   };
  
-  const handleActivityComplete = (activity, day) => {
-      setActivityChecklist(null);
-  };
- 
   const quickCompleteActivity = (date, instanceId, activity) => {
     if (activity.exercises && activity.exercises.length > 0) {
         const newProgress = JSON.parse(JSON.stringify(activityProgress));
@@ -1324,10 +1338,9 @@ export default function App() {
         newProgress[date][instanceId] = newInstanceState;
         setActivityProgress(newProgress);
        
-        // Also update the log for stats
         setActivityLogs(prev => {
            const dayLogs = prev[date] || [];
-           if (isAlreadyComplete) { // if unchecking, remove log
+           if (isAlreadyComplete) {
                const filteredLogs = dayLogs.filter(log => log.instanceId !== instanceId);
                if (filteredLogs.length === 0) {
                    const newLogs = {...prev};
@@ -1335,7 +1348,7 @@ export default function App() {
                    return newLogs;
                }
                return { ...prev, [date]: filteredLogs };
-           } else { // if checking, add a default log (user can edit duration in modal)
+           } else {
                const newLog = { instanceId, activityId: activity.id, duration: 0, distance: 0, calories: 0 };
                const filteredLogs = dayLogs.filter(log => log.instanceId !== instanceId);
                return { ...prev, [date]: [...filteredLogs, newLog] };
@@ -1369,18 +1382,7 @@ export default function App() {
     }
   };
 
-  if (configError) {
-    return (
-        <div className="bg-red-100 text-red-800 p-8 min-h-screen flex items-center justify-center">
-            <div className="text-center">
-                <h1 className="text-2xl font-bold mb-2">Configuration Error</h1>
-                <p>{configError}</p>
-            </div>
-        </div>
-    )
-  }
-
-  if (!isAuthReady || !db) {
+  if (!isAuthReady) {
     return (
         <div className="bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-white min-h-screen flex items-center justify-center">
             <p>Loading...</p>
@@ -1494,4 +1496,69 @@ export default function App() {
       )}
     </div>
   );
+}
+
+// This new component handles the auth loading state.
+function useAuth() {
+    const [isAuthReady, setIsAuthReady] = useState(false);
+    const [userId, setUserId] = useState(null);
+    const [db, setDb] = useState(null);
+    const [auth, setAuth] = useState(null);
+    const [configError, setConfigError] = useState(null);
+
+    useEffect(() => {
+        if (!firebaseConfig.apiKey || firebaseConfig.apiKey === "YOUR_API_KEY") {
+            setConfigError("Firebase configuration is missing or incomplete. Please add your credentials to the firebaseConfig object in src/App.js.");
+            return;
+        }
+        try {
+            const app = initializeApp(firebaseConfig);
+            const authInstance = getAuth(app);
+            setDb(getFirestore(app));
+            setAuth(authInstance);
+
+            const unsubscribe = onAuthStateChanged(authInstance, async (user) => {
+                if (user) {
+                    setUserId(user.uid);
+                } else {
+                    try {
+                        await signInAnonymously(authInstance);
+                    } catch (error) { console.error("Authentication Error:", error); }
+                }
+                setIsAuthReady(true);
+            });
+            return () => unsubscribe();
+        } catch (e) {
+            console.error("Error initializing Firebase:", e);
+            setConfigError("Failed to initialize Firebase. Check your configuration.");
+        }
+    }, []);
+
+    return { isAuthReady, userId, db, auth, configError };
+}
+
+// The main export is now a wrapper that handles the loading/error states.
+export default function App() {
+    const { isAuthReady, configError } = useAuth();
+
+    if (configError) {
+        return (
+            <div className="bg-red-100 text-red-800 p-8 min-h-screen flex items-center justify-center">
+                <div className="text-center">
+                    <h1 className="text-2xl font-bold mb-2">Configuration Error</h1>
+                    <p>{configError}</p>
+                </div>
+            </div>
+        );
+    }
+
+    if (!isAuthReady) {
+        return (
+            <div className="bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-white min-h-screen flex items-center justify-center">
+                <p>Loading...</p>
+            </div>
+        );
+    }
+
+    return <AppContent />;
 }
